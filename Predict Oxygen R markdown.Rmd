@@ -1,0 +1,453 @@
+---
+title: "Software for Data Analysis - Project 2"
+author: "180024815"
+date: "November 2018"
+output: 
+  html_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+  pdf_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+---
+
+
+```{r warning=TRUE, include=FALSE}
+library(devtools)
+library(broom)
+library(carData)
+library(car)
+library(effects)
+library(ggthemes)
+library(knitr)
+library(ggplot2)
+library(memisc)
+library(pander)
+
+```
+
+
+
+# Executive Summary
+
+A dataset has been collected from 31 one individuals measuring their properties after running 1.5 miles. We are trying to find variables which might correlate with Oxygen intake. A total of 31 observations from a physical fitness program were evaluated with applied statistical methods including various normality tests and simple linear regression models. 
+The linear regression model intends to firstly describe the relationship of Oxygen intake and other variables to create a prediction model based on significant variables.
+Model selection methods included using the backward and forward selection using Adjusted R squared values to determine the best model. Cross validation was used to select the final model. The variables in the final model were subjected to bootstrapping to determine confidence intervals for each parameter.
+The final model included relationships with Oxygen intake and Age, weight, run time, run pulse and max pulse. How much the rest pulse influenced the oxygen intake was not found to be significant.
+All these findings are highly limited in its application because of the limited sampled population, as it is very small, and includes data only for single, live, male individuals. Further research in this topic could deepen our understanding of these connection but would fail to help in assessing how variables can affect oxygen intakes while there is no factored variable in this dataset as well.  Nonetheless, the findings in this report allow to point research into an adequate direction. 
+
+
+# Introduction
+
+For the purpose of this study our data is from a physical fitness program at N. C. State University. Observations were taken on n = 31 men. In addition to age and weight, oxygen intake ($Y$), run time, heart rate while resting, heart rate while running, and maximum heart rate. The data are given in Table below. The results we discuss are from the regression of oxygen uptake $Y$ on the four variables $X1$, $X2$, $X3$, and $X4$ run time, resting heart rate, running heart rate and maximum heart rate respectively. Below you can see the summary of our data set and dataset itself:
+
+
+```{r}
+fitness <- read.csv('fitness.csv')
+kable(summary(fitness), caption = "Summary of the dataSet")
+```
+
+```{r}
+kable(fitness, caption = "Dataset")
+
+```
+
+
+Dataset fields description:
+
+*	**Age** – Age of individual in years 
+*	**Weight** – Weight of individual in Kg
+*	**Oxygen** – Amount of O2 uptake in (ml per kg body weight per minute)
+*	**Time** – Run time in min
+*	**RunTime** – Running heart rate
+*	**RestPulse** – Resting hear rate
+*	**MaxPulse** – Maximum heart rate  
+
+
+# Exploratory Analysis
+
+An initial descriptive statistical summary is conducted to explore potential relationships in the dataset. This section looks at the frequencies of oxygen across other covariates and examines some specific variables with relationships suggested by preliminary plots. The exploratory data analysis was produced with the help of R software and plot features specifically. 
+We assumed each individual  in this study is distinct therefore, assuming each observation to be independent.
+
+## Oxygen Intake and Weight
+
+Investigating and exploring relationships between the weights of individuals and amount of oxygen intake we managed to plot relationship between the mentioned variables delivered by below scatterplot. In the below figure, the response variable, weight, is displayed against the amount of oxygen intake. There is a very weak negative relationship as there is no clear evidence that the points are tightly clustered, and several outliers interfere the overall pattern. Therefore, we can conclude that as the weight goes up the amount of oxygen intake decreases. However, in later stage this assumption will be tested along with other variables.
+
+```{r, fig.align='center', fig.width=6, fig.height=4}
+ggplot(fitness,aes(x=Weight,y=Oxygen)) +
+  geom_point(size=2.5,colour="red",shape=20) +
+  labs(x="Weight",y="Oxygen Intake") +
+  theme_economist(base_size=16)+scale_colour_economist() +
+  ggtitle("Scatter plot of Oxygen intake and Rest Pulse") +
+  theme(plot.title=element_text(size = 25)) +
+  geom_smooth(method='lm',formula=y~x, col = "blue")
+```
+
+
+## Oxygen Intake and Run Time
+
+We have chosen to investigate the oxygen and run time (RunTime) as second pair in this exploratory analysis. While the graph shows negative relationship between these two covariates, but we can see that those individuals with lower run time have significantly higher amount of oxygen intake. 
+
+```{r, fig.align='center', fig.width=6, fig.height=4}
+ggplot(fitness,aes(x=RunTime,y=Oxygen)) +
+  geom_point(size=2.5,colour="orange",shape=20) +
+  labs(x="Run Time",y="Oxygen Intake") +
+  theme_economist(base_size=16)+scale_colour_economist() +
+  ggtitle("Scatter plot of Oxygen intake and Run Time") +
+  theme(plot.title=element_text(size = 25)) +
+  geom_smooth(method='lm',formula=y~x, col = "blue")
+```
+
+This can resemble that the runners who managed to finish 1.5 mile faster have higher oxygen intake and therefore, it affects the quality of their time. Further in this study we can check this assumption statistically by comparing the p-values, whether they are significant on our model or not.
+
+## Correlation
+
+it would be helpful in later stages if we explor the data set in terms on Collinearity or multicollinearity. As we can assess our model to check for any possible violation of assumptions.
+
+```{r}
+round(cor(fitness),2)
+```
+
+It seems that there is a positivie correlation between MaxPulse and RunPulse, as can been since with the number represented as 0.93. Therefore, after fitting our model we can calculate variance-inflation using **vif()** function.
+
+# Methods
+
+## Linear Regression and Model Selection
+
+Using the Adjusted R squared backward, forward and stepwise selection to determine a statistically significant model for factors that determine Oxygen intake.
+Various models were developed for the relationship between oxygen and the variables contained within the data-set. 20% of the data was held off as a validation data-set to make a final assessment on the final model using their mean squared error which we asses after selecting the best model.
+
+The models have been developed using backward, forwards and AIC steps wise selection to be able to choose the best model. The result of each model can be seen in separate table below:
+
+### Backward Selection
+
+We start with a full model, including each independent variable in the mode
+
+```{r}
+fitness.backward <- step(lm(Oxygen~Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse, 
+                            data = fitness),
+                         direction = "backward")
+```
+
+Below a summary of backward selection can be seen:
+```{r}
+summary(fitness.backward)
+```
+
+### Backward Selection Using drop1() and update()
+
+After using step function for backward selection we compare the previous methos method with selection using 
+**drop1()** and **update()** function. 
+
+```{r}
+fitness.backward2 <- lm(Oxygen~Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse, data = fitness)
+drop1(fitness.backward2, test = "F") 
+fitness.backward2 <- update(fitness.backward2, .~.-RestPulse)
+drop1(fitness.backward2, test = "F")
+fitness.backward2 <- update(fitness.backward2, .~.-Weight)
+drop1(fitness.backward2, test = "F")
+fitness.backward2 <- update(fitness.backward2, .~.-MaxPulse)
+summary(fitness.backward2)
+```
+
+Initially we fitted the full model using all the variables. After first iteration, RestPulse showed the lowest significant p-value. Therefore, we removed RestPulse from the model using **drop1()** function. We continued the process by dropping Weight and MaxPlus and final model has fitted value with Oxygen ~ Age + RunTime + RunPulse. Which can be a good candidate in order to be a best model for this study.
+
+### Forward Selection
+
+In this method we start with intercept only model and then perform series of independent test to determine which of the predictor variables significantly improve the goodness of fit.
+
+```{r}
+fitness.forward <- step(lm(Oxygen~1, data = fitness),
+                        direction = "forward", 
+                        scope =~ Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse)
+```
+
+### Forward Selection Using Add1() and update()
+
+In this section we decided to compare the forward selection method using **step()** function and forward selection using 
+**add1()** and **update()** function. 
+
+```{r}
+fitness.forward2 <- lm(Oxygen~1, data = fitness)
+```
+Here we selected our intercept and created the initial model.
+```{r}
+add1(fitness.forward2, scope = .~.+Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse, test = "F")
+```
+Using the **add1()** we examine which predictor has the most significant p-value. As can be seen in the result the RunTime has the most significant value. 
+
+```{r}
+fitness.forward2 <- update(fitness.forward2, formula. = .~.+RunTime)
+```
+
+Therfore, using the **update()** function we update our model and add the RunTime plus to it.
+```{r}
+add1(fitness.forward2, scope =.~.+Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse, test = "F")
+```
+Running add again surprisingly we can see none of the predictors are showing any significant value and forward method ends here. However, in order to measure quality of our model we can run **AIC()** to check whether there is any improvment compare to the other models.
+```{r}
+AIC(fitness.forward2)
+```
+AS it can be seen it is significan't higher than the other models. So, for sure not the best candidate for the best model.
+
+Below we can see the summary of our model.
+```{r}
+summary(fitness.forward2)
+```
+
+### Stepwise AIC Selection
+
+Here every block of output shows the current model fit, the AIC value and a table showing the possible moves. The AIC value that result from every move is listedand every move os ranked from samlles to largest AIC value. The model shows formula as **Oxygen ~ Age + Weight + RunTime + RunPulse + MaxPulse**
+
+```{r echo=TRUE}
+fitness.stepwise <- step(lm(Oxygen~Age+Weight+RunTime+RestPulse+RunPulse+MaxPulse, 
+                            data = fitness), 
+                         direction = "both")
+```
+
+
+```{r}
+summary(fitness.stepwise)
+```
+
+### Stepwise AIC Selection using Interactions
+
+In this section we are compring pur previous model with stepwise AIC selection and interaction between our each predictor.
+
+```{r}
+fitness.stepwise2 <- step(lm(Oxygen~1, data = fitness), 
+                          scope =~ Age*Weight*RunTime*RestPulse*RunPulse*MaxPulse, 
+                          direction = "both")
+
+```
+
+```{r}
+summary(fitness.stepwise2)
+```
+As a result of fitting this model we can see that none of the interaction have significan't influence on this model as none of them are included in the final iteration
+
+## Summary of Model Selection
+
+Comparing the models as outcome of backward/backward manual, forward/forward manual and stepwise/stepwise with interaction methods we can conclude that the backward and stepwise method came up with the same variables. The models used the following variables, Age, Weight, RunTime, RunPulse and MaxPulse. This is while, the backward manual and forward manual contained less number of predictor, but with much higher AIC. 
+The common ground among all selections showed that RestPulse variable seemed to be the least significant variable among all and RunPulse has highest variation in response. As RestPulse was not included in any of the models and looking at each step of the modelling it is carrying highest number of AIC.
+Since stepwise AIC selection has better Adjusted R-Squared with 0.82 and highest AIC of 56.3 we select this method in order to proceed further as it also contains highest number of significant variables looking and comparing the summary of each model individually. **Oxygen ~ Age + Weight + RunTime + RunPulse + MaxPulse** 
+
+Selection of model has been done using each models summary independently however, below table shows a summary of all the fitted models:
+```{r}
+
+mtable123 <- mtable('Backward' = fitness.backward,
+                    'Backward Manual' = fitness.backward2,
+                    'Forward' = fitness.forward,
+                    'Forward Manual' = fitness.forward2,
+                    'Stepwise AIC' = fitness.forward,
+                    'Stepwise AIC, Interation' = fitness.stepwise,
+                    summary.stats = c('R-squared','F','p','N'))
+mtable123
+
+```
+
+
+### Multicollinearity
+
+As we discussed in earlier stages, the R function **vif()** from car package can be used to detect multicollinearity in a regression model:
+
+```{r}
+vif(fitness.stepwise)
+```
+
+Any variable with a high VIF value (above 5 or 10) should be removed from the model. This leads to a simpler model without compromising the model accuracy, which is good. As it was expected we can see the correlation between RunPulse and MaxPulse are leading to multicollinearity. So, we’ll update our model by removing the the predictor variables with high VIF value and keep RunPluse as it provided the highest AIC during the model fitting.
+
+
+```{r}
+fitness.stepwise <- update(fitness.stepwise, .~.-MaxPulse)
+```
+Checking collinearity again:
+```{r}
+vif(fitness.stepwise)
+```
+We don't see any issue with colliniearity. Hence our final model is **Oxygen ~ Age + Weight + RunTime + RunPulse**
+
+
+### Normality
+
+In a linear regression the residuals or errors in observed data is assumed to be normally distributed. A Shapiro-Wilk hypothesis test suggests normal residuals per below results:
+
+```{r}
+shapiro.test(rstandard(fitness.stepwise))
+```
+
+Cross checking the shapiro test with our upcoming QQ norm we can see that the normality is available in our model. As the null hypothesis has not been rejected with p-value of 0.35. The null hypothesis for Shapiro test is that the data are normally distributed. Being able to assume normality of the error term supports the methodology used to produce reliable estimates of the regression coefficients.
+
+Also, a normal QQ plot shows very normal looking residuals see below figure of QQ plot. Plotting residuals against the fitted values shows normal errors, but with a very obvious downward curve for extremely high or low residuals. Looking at the Pearson residuals for each parameter shows that this is because of the relationship with gestation duration (Figure 11), which is to be expected. The model fails to apply to extremely high or low gestation durations because they suggest a further complication which is likely to correlate with low birth weight
+
+
+```{r}
+qqnorm(rstandard(fitness.stepwise))
+qqline(rstandard(fitness.stepwise))
+```
+
+### Non-constant Variance Score Test
+
+In terms of variance of our fitted model using stepwise AIC selection, running non-constant variance score test, we used ncvTest which the results are as below:
+
+```{r}
+ncvTest(fitness.stepwise)
+```
+
+The p-value of 0.17 shows we can't reject the null hypothesis which indicates the variance of the residuals is constant and infer that heteroscedasticity is not present.
+
+
+
+### Validation
+
+Based the best fitted model, we randomly selected 20% of the data as validation using the predict function on the fitted model and validation data. The result returns three columns, whose number of rows corresponds to the predicator values we supplied as a validation data. The first column with heading of fit is the point estimate on the regression line. The other columns provide the lower and upper confidence interval limit as the lwr and upr columns, respectively. Below table shows the sample data and the produced limits:
+
+```{r}
+xvals <- data.frame(Age=sample(fitness$Age, 6),
+                    Weight=sample(fitness$Weight, 6),
+                    RunTime= sample(fitness$RunTime, 6),
+                    RunPulse= sample(fitness$RunPulse, 6))
+kable(xvals, caption = "Validation data")
+```
+
+```{r}
+predict.fitness <- predict(fitness.stepwise, 
+                           newdata = xvals, 
+                           interval="confidence", 
+                           level = 0.95)
+kable(round(predict.fitness,2), caption = "Confidence intervals")
+```
+
+We can interpret the table as 95 percent confidence that the mean Oxygen intake of a person with respective characteristic of validation data for instance the number one lies between 40.8 and 47.5 (ml per kg body weight per minute) when rounded to 1d.p.
+
+### Plot Regression Terms
+
+This section shows us, plots regression terms against their predictors, optionally with standard errors and partial residuals added.
+
+```{r}
+par(mfrow = c(2,2)) ## 2 x 2 plots
+termplot(fitness.stepwise, partial.resid = TRUE, se = TRUE, main = TRUE)
+```
+
+Compare the coefficients in the summary output to the slopes of the lines in the graphs. We ca see how the coefficients match the slopes of the lines. That's because they are the slopes of the lines. For example, Age has a coefficient of about -5. Likewise, the termplot for that coefficient has a negative slope that appears to be about -5. Using these plots we can see at a glance the respective contributions of the predictors. RunPulse and RunTime (strong negative) seem to contribute to the model due to the steepness of their slopes, but Weight not so much. 
+This matches the summary output that shows **RunPulse** and **RunTime** as being significant. As they showed they have the most significant values in our selected model.
+
+
+
+# Group Bootstrap Function
+
+The R function lmBootParallel is used by specifying a dataset to perform the bootstrap on, the number of bootstraps to perform, as well as a list containing the indexes of the columns representing covariates and the response variable. This allows for an arbitrary number of covariates to be specified for use in the linear modelling. 
+
+Here we plugin our covariates to detect the confidence intervals according to our model.
+
+
+```{r eval=FALSE}
+fitness <- read.csv('data/fitness.csv')
+
+# Calling the Optimised Bootstrap Function to get coefficients
+coeff <- lmBootParallel(fitness, 1e5, c(1, 2, 4,7), 3)
+
+CI <- matrix(NA, nrow = ncol(coeff), ncol = 2)
+for(i in 1:ncol(coeff)){
+  CI[i, ] <- quantile(coeff[, i], probs = c(0.025, 0.975))
+}
+```
+
+```{r eval= FALSE}
+     [,1]         [,2]
+[1,] 86.3697  127.09379
+[2,] -0.4664  -0.02664
+[3,] -0.1482   0.09382
+[4,] -3.7555  -2.24942
+[5,] -0.1767   0.02643
+```
+
+
+
+# Randomisation
+
+We selected the best model and performed randomisation test for all of the same model terms. For the purpose of this analysis we used bootstrap number of 1500 in order further resample our dataset. 
+Looking at the result of our intercept we can see that histogram of our intercept is perfectly normally distributed over 1500 generated observations and fitted numbers in our selected model:
+
+```{r}
+# Randomization --------------------------------------------------------------------------------------------------------------
+fitness.bootsratp.function <- function(inputdata,BootNo){
+# Function performs bootsrapping
+# Inputs:
+#   nputData - data frame
+#   BootNo - integer - number of resampling
+# Output:
+#   bootResults - matrix - contains the y-intercept and the slopes of the 
+
+# Input checks
+  if(!is.data.frame(inputdata) || BootNo < 0){
+    stop("Invalid arguments")
+  }
+  
+set.seed(180024815)
+
+bootResults <- array(dim = c(BootNo, 5))
+for(i in 1:BootNo){
+  # resample our data with replacement
+  bootData <- inputdata[sample(1:31, 100, replace = T),]
+  # fit the model under this alternative reality
+  bootLM <- lm(Oxygen ~ Age + Weight + RunTime + RunPulse, data = bootData)
+  # store the coefs
+  bootResults[i, ] <- coef(bootLM)
+}
+  bootResults
+}
+bootResult <- fitness.bootsratp.function(fitness, 1500)
+```
+
+
+
+
+```{r}
+hist(bootResult[,1], col = "darkblue", main = 'intercept distribution', xlab = "Intercept")
+
+```
+
+Also, by plotting each of the covariates related to bootstrap result and fitted coefficients we can again see the normally distributed histograms which is expected. 
+
+## Confidence Intervals
+
+Table below in this section shows confidence intervals for the same parameters from bootstrapping with 1500 resamples using the best fitted method explained earlier. 
+
+
+```{r}
+table1 <- rbind(quantile(bootResult[,1], probs = c(0.025, 0.975)),
+                quantile(bootResult[,2], probs = c(0.025, 0.975)),
+                quantile(bootResult[,3], probs = c(0.025, 0.975)),
+                quantile(bootResult[,4], probs = c(0.025, 0.975)),
+                quantile(bootResult[,5], probs = c(0.025, 0.975)))
+kable(table1, caption = "Confidence Intervals")
+
+```
+
+## Linearity
+
+As a result of bootstrapping we explained that the collected coefficients per histogram seems to be very normal. However, as investigated the selected model we noticed shapiro test and ncvTest were so close to our alpha value. At the same time we did not have a perfect normal distribution when plotting QQ plot.
+
+Looking at the QQ plot after bootstrapping for instance we can see a reasonable sign that the coefficients are normally distributed:
+
+```{r}
+qqnorm(bootResult[,1])
+qqline(bootResult[,1])
+```
+
+Running shapiro test can confirm the normality by showing p-value of 0.24 as  below which does not have enough evidence to reject null hypothesis of shapiro test.
+
+```{r}
+shapiro.test(bootResult[,1])
+```
+
+
+\newpage
+
+# References"
+* "Toturial and lecture activities"  by Dr.Donavan - MT5763
+* Tilman M.Davies (2016). The book of R.
+* Rawlings (1998) Applied Regression Analysis: A Research Tool 2nd Edition,[http://web.nchu.edu.tw/~numerical/course992/ra/Applied_Regression_Analysis_A_Research_Tool.pdf](http://web.nchu.edu.tw/~numerical/course992/ra/Applied_Regression_Analysis_A_Research_Tool.pdf)
